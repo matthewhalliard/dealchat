@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Document, Page, pdfjs } from 'react-pdf';
+import { pdfjs } from 'react-pdf';
 import Link from 'next/link';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
@@ -53,6 +53,7 @@ export default function Home() {
   // Fetch contracts when the component mounts
   useEffect(() => {
     fetchContracts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fetch the list of contracts from the API
