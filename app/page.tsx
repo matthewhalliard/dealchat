@@ -27,7 +27,6 @@ export default function Home() {
   // Fetch contracts when the component mounts
   useEffect(() => {
     fetchContracts();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fetch the list of contracts from the API
