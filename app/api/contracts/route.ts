@@ -1,27 +1,30 @@
-import { list } from '@vercel/blob';
 import { NextResponse } from 'next/server';
+import { sql } from '@/utils/db';
 
 export async function GET() {
   try {
-    // List all files in the blob storage
-    const { blobs } = await list();
+    // Get all contracts from the database
+    const contracts = await sql`
+      SELECT 
+        id, 
+        filename, 
+        blob_url as url, 
+        word_count, 
+        upload_date as "uploadedAt",
+        LENGTH(extracted_text) > 0 as has_text
+      FROM contracts 
+      ORDER BY upload_date DESC
+    `;
     
-    // Filter for PDF files only and transform for frontend use
-    const pdfFiles = blobs
-      .filter(blob => blob.pathname.toLowerCase().endsWith('.pdf'))
-      .map(blob => ({
-        url: blob.url,
-        pathname: blob.pathname,
-        size: blob.size,
-        uploadedAt: blob.uploadedAt,
-        // Extract original filename from the pathname (remove timestamp prefix)
-        filename: blob.pathname.split('-').slice(1).join('-')
-      }))
-      // Sort by most recent first
-      .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+    // Transform to match the original API format
+    const transformedContracts = contracts.map(contract => ({
+      ...contract,
+      pathname: contract.filename, // For backwards compatibility
+      size: 0, // We don't have this info from the database
+    }));
     
     return NextResponse.json({ 
-      contracts: pdfFiles,
+      contracts: transformedContracts,
       success: true 
     });
   } catch (error) {

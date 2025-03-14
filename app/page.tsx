@@ -1,44 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { pdfjs } from 'react-pdf';
 import Link from 'next/link';
-import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
-import 'react-pdf/dist/esm/Page/TextLayer.css';
-import * as pdfJsDist from 'pdfjs-dist';
-
-// Set worker source - we'll only use this for local file previews
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
-pdfJsDist.GlobalWorkerOptions.workerSrc = '/pdf-worker/pdf.worker.min.mjs';
 
 interface Contract {
+  id: number;
   url: string;
   pathname: string;
   size: number;
   uploadedAt: string;
   filename: string;
-  wordCount?: number;
-}
-
-// Add more specific types for PDF.js text content
-interface TextItem {
-  str: string;
-  dir: string;
-  transform: number[];
-  width: number;
-  height: number;
-  hasEOL: boolean;
-}
-
-// Define a generic marked content item interface
-interface TextMarkedContent {
-  type: string;
-  items: unknown[];
-}
-
-interface TextContent {
-  items: (TextItem | TextMarkedContent)[];
-  styles: Record<string, unknown>;
+  word_count: number;
+  has_text: boolean;
+  blob_url: string; // Changed from url
 }
 
 export default function Home() {
@@ -69,14 +43,7 @@ export default function Home() {
       const data = await response.json();
       
       if (data.success) {
-        // Get contracts and calculate word counts
-        const contractsWithWordCounts = await Promise.all(
-          data.contracts.map(async (contract: Contract) => {
-            const wordCount = await calculateWordCount(contract.url);
-            return { ...contract, wordCount };
-          })
-        );
-        setContracts(contractsWithWordCounts);
+        setContracts(data.contracts);
       } else {
         throw new Error(data.error || 'Failed to fetch contracts');
       }
@@ -85,30 +52,6 @@ export default function Home() {
       console.error('Error fetching contracts:', err);
     } finally {
       setIsLoadingContracts(false);
-    }
-  };
-
-  const calculateWordCount = async (pdfUrl: string): Promise<number> => {
-    try {
-      const pdf = await pdfJsDist.getDocument(pdfUrl).promise;
-      let text = '';
-      
-      // Extract text from all pages
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent() as TextContent;
-        const pageText = textContent.items
-          .filter((item): item is TextItem => 'str' in item)
-          .map(item => item.str)
-          .join(' ');
-        text += pageText + ' ';
-      }
-      
-      // Count words (split by whitespace and filter out empty strings)
-      return text.split(/\s+/).filter(word => word.length > 0).length;
-    } catch (err) {
-      console.error('Error calculating word count:', err);
-      return 0;
     }
   };
 
@@ -271,7 +214,7 @@ export default function Home() {
                             <div className="flex gap-2 mt-1 text-xs text-gray-500">
                               <span>{formatFileSize(contract.size)}</span>
                               <span>•</span>
-                              <span>{contract.wordCount?.toLocaleString() || '0'} words</span>
+                              <span>{contract.word_count.toLocaleString()} words</span>
                             </div>
                           </div>
                           <div className="flex space-x-2">
@@ -312,7 +255,7 @@ export default function Home() {
               <div className="text-center max-w-md">
                 <h3 className="text-lg font-medium mb-2">{selectedContract.filename}</h3>
                 <p className="text-gray-500 mb-4">
-                  {selectedContract.wordCount?.toLocaleString() || '0'} words • {formatFileSize(selectedContract.size)} • Uploaded on {formatDate(selectedContract.uploadedAt)}
+                  {selectedContract.word_count.toLocaleString()} words • {formatFileSize(selectedContract.size)} • Uploaded on {formatDate(selectedContract.uploadedAt)}
                 </p>
                 
                 {!isAnalyzing ? (
