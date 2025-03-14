@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
 
     console.log(`File uploaded to: ${blob.url}`);
 
-    // Extract text from the PDF using the backend utility
-    console.log('Extracting text from PDF...');
+    // Extract text from the PDF using the improved backend utility
+    console.log('Extracting text from uploaded PDF...');
     const { text, wordCount } = await extractTextFromPDF(blob.url);
     console.log(`Extracted ${wordCount} words from PDF`);
     
@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
       url: blob.url,
       contractId: result[0].id,
       wordCount,
+      textPreview: text.substring(0, 300) + (text.length > 300 ? '...' : ''),
       success: true
     });
   } catch (error) {

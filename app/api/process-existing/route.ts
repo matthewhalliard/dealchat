@@ -7,9 +7,13 @@ const sql = neon(process.env.DATABASE_URL!);
 
 export async function GET() {
   try {
-    // Get all contracts that don't have text extracted yet
+    // Get all contracts that don't have text extracted yet or have the placeholder text
     const contracts = await sql`
-      SELECT id, blob_url as url FROM contracts
+      SELECT id, blob_url as url, filename FROM contracts
+      WHERE extracted_text IS NULL 
+      OR extracted_text LIKE 'File:%'
+      OR extracted_text LIKE '[PDF%'
+      OR LENGTH(extracted_text) < 100
     `;
 
     console.log(`Found ${contracts.length} contracts to process`);
@@ -24,6 +28,8 @@ export async function GET() {
         // Extract text from the PDF
         const { text, wordCount } = await extractTextFromPDF(contract.url);
         
+        console.log(`Successfully extracted ${wordCount} words from contract ${contract.id}`);
+        
         // Update the contract in the database
         await sql`
           UPDATE contracts 
@@ -31,18 +37,21 @@ export async function GET() {
           WHERE id = ${contract.id}
         `;
         
-        console.log(`Successfully processed contract ${contract.id}: ${wordCount} words`);
+        console.log(`Updated database for contract ${contract.id}`);
         
         results.push({
           id: contract.id,
+          filename: contract.filename,
           success: true,
-          wordCount
+          wordCount,
+          textPreview: text.substring(0, 200) + (text.length > 200 ? '...' : '')
         });
       } catch (error: any) {
         console.error(`Error processing contract ${contract.id}:`, error);
         
         results.push({
           id: contract.id,
+          filename: contract.filename,
           success: false,
           error: error.message || String(error)
         });

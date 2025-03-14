@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { extractTextFromPDF } from '@/utils/pdf-extractor';
+import { extractTextFromPDF } from '@/utils/pdf-extractor-node';
 import { sql } from '@/utils/db';
 
 export async function POST(request: NextRequest) {
@@ -26,9 +26,11 @@ export async function POST(request: NextRequest) {
     }
 
     const contract = contracts[0];
+    console.log(`Extracting text from contract ID ${contractId}: ${contract.filename}`);
     
     // Extract text from the PDF
     const { text, wordCount } = await extractTextFromPDF(contract.blob_url);
+    console.log(`Successfully extracted ${wordCount} words from ${contract.filename}`);
     
     // Update the database with the extracted text
     await sql`
@@ -36,11 +38,15 @@ export async function POST(request: NextRequest) {
       SET extracted_text = ${text}, word_count = ${wordCount}
       WHERE id = ${contractId}
     `;
+    console.log(`Updated database with extracted text for contract ID ${contractId}`);
 
+    // Return a more detailed response
     return NextResponse.json({
       success: true,
       wordCount,
-      textPreview: text.substring(0, 300) + (text.length > 300 ? '...' : '')
+      contractId,
+      filename: contract.filename,
+      textPreview: text
     });
   } catch (error) {
     console.error('Error extracting text:', error);

@@ -1,4 +1,5 @@
 import * as https from 'https';
+import pdfParse from 'pdf-parse';
 
 /**
  * Downloads a file from a URL as a buffer
@@ -20,7 +21,7 @@ async function downloadFile(url: string): Promise<Buffer> {
 }
 
 /**
- * Estimate PDF content size based on file size
+ * Estimate PDF content size based on file size - used as fallback only
  * @param fileSize Size of the PDF file in bytes
  * @returns Estimated word count
  */
@@ -42,7 +43,15 @@ function estimateWordCount(fileSize: number, filename: string): number {
 }
 
 /**
- * Extract estimated text from PDF based on file size
+ * Count words in a text string
+ */
+function countWords(text: string): number {
+  // Split by whitespace and filter out empty strings
+  return text.split(/\s+/).filter(word => word.length > 0).length;
+}
+
+/**
+ * Extract text from PDF using pdf-parse library
  */
 export async function extractTextFromPDF(pdfUrl: string): Promise<{ text: string, wordCount: number }> {
   console.log('Starting PDF extraction from URL:', pdfUrl);
@@ -52,36 +61,52 @@ export async function extractTextFromPDF(pdfUrl: string): Promise<{ text: string
     const pdfBuffer = await downloadFile(pdfUrl);
     console.log(`PDF downloaded, size: ${pdfBuffer.length} bytes`);
     
-    // Extract filename
-    const filename = pdfUrl.split('/').pop() || '';
-    
-    // Since pdf-parse is having issues, use file size to estimate word count
-    const wordCount = estimateWordCount(pdfBuffer.length, filename);
-    
-    console.log(`Estimated ${wordCount} words from PDF based on file size (${pdfBuffer.length} bytes)`);
-    
-    return { 
-      text: `File: ${filename}\nEstimated word count: ${wordCount}\nSize: ${pdfBuffer.length} bytes`, 
-      wordCount 
-    };
+    try {
+      // Extract text using pdf-parse with explicit data parameter
+      const pdfData = await pdfParse(pdfBuffer, {
+        // Explicitly pass the buffer data without relying on file paths
+        data: pdfBuffer
+      });
+      console.log(`PDF parsed successfully, text length: ${pdfData.text.length} characters`);
+      
+      // Calculate word count from actual text
+      const wordCount = countWords(pdfData.text);
+      console.log(`Extracted ${wordCount} words from PDF text`);
+      
+      return { 
+        text: pdfData.text, 
+        wordCount 
+      };
+    } catch (parseError) {
+      console.error('Error parsing PDF content:', parseError);
+      throw parseError;
+    }
   } catch (error) {
     console.error('Error processing PDF:', error);
     
     // Fallback for error cases
     const filename = pdfUrl.split('/').pop() || '';
-    let wordCount = 0;
     
-    // Make educated guesses based on filename
-    if (filename.includes('NDA') || filename.includes('Template')) {
-      wordCount = 1200; // Typical for NDAs
-    } else {
-      wordCount = 750; // Default estimate
+    // Try to get some information about the file
+    let wordCount = 0;
+    let fallbackText = '';
+    
+    try {
+      // Even if PDF parsing failed, we might have downloaded the file
+      const pdfBuffer = await downloadFile(pdfUrl);
+      wordCount = estimateWordCount(pdfBuffer.length, filename);
+      fallbackText = `[PDF Extraction Error] Filename: ${filename}\nEstimated word count based on file size: ${wordCount}\nSize: ${pdfBuffer.length} bytes`;
+    } catch (downloadError) {
+      // Complete failure - couldn't even download
+      console.error('Failed to download PDF:', downloadError);
+      wordCount = filename.includes('NDA') || filename.includes('Template') ? 1200 : 750;
+      fallbackText = `[PDF Download Error] Filename: ${filename}\nDefault word count: ${wordCount}`;
     }
     
-    console.log(`Processing failed, using default word count of ${wordCount}`);
+    console.log(`Processing failed, using estimated word count of ${wordCount}`);
     
     return { 
-      text: `Error processing ${filename}. Using default word count.`, 
+      text: fallbackText, 
       wordCount 
     };
   }
