@@ -5,6 +5,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import Link from 'next/link';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
+import PdfPreview from './components/PdfPreview';
 
 // Set worker source - we'll only use this for local file previews
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
@@ -188,17 +189,10 @@ export default function Home() {
     }
 
     if (isRemotePdf) {
-      // Use iframe for remote PDFs (more reliable)
+      // Use our new PdfPreview component for remote PDFs
       return (
-        <div className="flex-1 flex flex-col">
-          <div className="flex-1 overflow-hidden border border-gray-200 rounded-lg">
-            <iframe 
-              src={`${pdfUrl}#view=FitH`} 
-              className="w-full h-full" 
-              title="PDF Preview"
-              allowFullScreen 
-            />
-          </div>
+        <div className="flex-1">
+          <PdfPreview pdfUrl={pdfUrl} />
         </div>
       );
     } else {
