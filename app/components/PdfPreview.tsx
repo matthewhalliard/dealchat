@@ -14,9 +14,15 @@ interface TextItem {
   hasEOL: boolean;
 }
 
+// Define a generic marked content item interface
+interface TextMarkedContent {
+  type: string;
+  items: unknown[];
+}
+
 interface TextContent {
-  items: (TextItem | any)[];
-  styles: Record<string, any>;
+  items: (TextItem | TextMarkedContent)[];
+  styles: Record<string, unknown>;
 }
 
 // Initialize PDF.js worker
@@ -63,6 +69,7 @@ export default function PdfPreview({ pdfUrl }: PdfPreviewProps) {
         pdfDocument.destroy();
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pdfUrl]);
   
   // Function to extract text from the PDF
@@ -75,7 +82,7 @@ export default function PdfPreview({ pdfUrl }: PdfPreviewProps) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent() as TextContent;
         const pageText = textContent.items
-          .filter(item => 'str' in item)
+          .filter((item): item is TextItem => 'str' in item)
           .map(item => item.str)
           .join(' ');
         fullText += `\n---- Page ${i} ----\n\n${pageText}\n`;
