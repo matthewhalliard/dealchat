@@ -102,7 +102,7 @@ export default function ContractsPage() {
           </div>
         ) : contracts.length === 0 ? (
           <div className="bg-gray-100 border border-gray-300 text-gray-700 p-8 rounded-lg text-center">
-            <p className="text-lg mb-4">You haven't uploaded any contracts yet.</p>
+            <p className="text-lg mb-4">You haven&apos;t uploaded any contracts yet.</p>
             <Link 
               href="/" 
               className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition"
