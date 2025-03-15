@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { extractTextFromPDF } from '@/utils/pdf-extractor-client';
 
 interface Contract {
@@ -30,7 +29,6 @@ export default function Home() {
   const [extractedWordCount, setExtractedWordCount] = useState<number | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionError, setExtractionError] = useState<string | null>(null);
-  const [savedToDatabase, setSavedToDatabase] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAnalyzingWithAI, setIsAnalyzingWithAI] = useState(false);
   const [aiAnalysisError, setAiAnalysisError] = useState<string | null>(null);
@@ -62,7 +60,6 @@ export default function Home() {
         setExtractedText(null);
         setExtractedWordCount(null);
         setExtractionError(null);
-        setSavedToDatabase(false);
         
         // Scroll to the analysis section
         setTimeout(() => {
@@ -217,7 +214,6 @@ export default function Home() {
     setExtractedText(null);
     setExtractedWordCount(null);
     setExtractionError(null);
-    setSavedToDatabase(false);
     setAiAnalysis(null);
     setAiAnalysisError(null);
     
@@ -288,7 +284,6 @@ export default function Home() {
       await fetchContracts();
       
       console.log(`Saved ${wordCount} words to the database for contract ID ${selectedContract.id}`);
-      setSavedToDatabase(true);
     } catch (error) {
       console.error('Error analyzing contract:', error);
       if (!extractedText) {
@@ -401,7 +396,6 @@ export default function Home() {
                           setExtractedText(null);
                           setExtractedWordCount(null);
                           setExtractionError(null);
-                          setSavedToDatabase(false);
                           
                           // Scroll to the analysis section
                           setTimeout(() => {
@@ -448,7 +442,6 @@ export default function Home() {
                                   setExtractedText(null);
                                   setExtractedWordCount(null);
                                   setExtractionError(null);
-                                  setSavedToDatabase(false);
                                 }}
                                 className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 py-1 px-2 rounded transition-colors"
                               >
