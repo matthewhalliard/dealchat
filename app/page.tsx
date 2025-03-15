@@ -14,6 +14,7 @@ interface Contract {
   word_count: number;
   has_text: boolean;
   blob_url: string; // Changed from url
+  analyzed: boolean;
 }
 
 export default function Home() {
@@ -30,11 +31,49 @@ export default function Home() {
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionError, setExtractionError] = useState<string | null>(null);
   const [savedToDatabase, setSavedToDatabase] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [isAnalyzingWithAI, setIsAnalyzingWithAI] = useState(false);
+  const [aiAnalysisError, setAiAnalysisError] = useState<string | null>(null);
 
   // Fetch contracts when the component mounts
   useEffect(() => {
     fetchContracts();
   }, []);
+
+  // Handle contractId from URL query parameters
+  useEffect(() => {
+    // Function to get URL query parameters
+    const getQueryParams = () => {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        return params;
+      }
+      return new URLSearchParams();
+    };
+
+    const params = getQueryParams();
+    const contractId = params.get('contractId');
+    
+    if (contractId && contracts.length > 0) {
+      const contract = contracts.find(c => c.id === parseInt(contractId));
+      if (contract) {
+        setSelectedContract(contract);
+        setIsAnalyzing(false);
+        setExtractedText(null);
+        setExtractedWordCount(null);
+        setExtractionError(null);
+        setSavedToDatabase(false);
+        
+        // Scroll to the analysis section
+        setTimeout(() => {
+          const analysisSection = document.getElementById('analysis-section');
+          if (analysisSection) {
+            analysisSection.scrollIntoView({ behavior: 'smooth' });
+          }
+        }, 500);
+      }
+    }
+  }, [contracts]);
 
   // Fetch the list of contracts from the API
   const fetchContracts = async () => {
@@ -179,6 +218,8 @@ export default function Home() {
     setExtractedWordCount(null);
     setExtractionError(null);
     setSavedToDatabase(false);
+    setAiAnalysis(null);
+    setAiAnalysisError(null);
     
     try {
       // Extract text from the contract PDF
@@ -205,17 +246,73 @@ export default function Home() {
         throw new Error(`Failed to save extracted text to database: ${updateResponse.status}`);
       }
       
-      // Refresh the contracts list to show updated word count
+      // Mark the contract as analyzed
+      const markAnalyzedResponse = await fetch('/api/mark-analyzed', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contractId: selectedContract.id
+        }),
+      });
+      
+      if (!markAnalyzedResponse.ok) {
+        console.warn(`Failed to mark contract as analyzed: ${markAnalyzedResponse.status}`);
+      }
+      
+      // Now analyze the text with OpenAI
+      setIsAnalyzingWithAI(true);
+      const aiAnalysisResponse = await fetch('/api/analyze-contract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contractId: selectedContract.id
+        }),
+      });
+      
+      if (!aiAnalysisResponse.ok) {
+        throw new Error(`Failed to analyze contract with AI: ${aiAnalysisResponse.status}`);
+      }
+      
+      const aiAnalysisData = await aiAnalysisResponse.json();
+      if (aiAnalysisData.success) {
+        setAiAnalysis(aiAnalysisData.analysis);
+      } else {
+        setAiAnalysisError(aiAnalysisData.error || 'Failed to analyze contract with AI');
+      }
+      
+      // Refresh the contracts list to show updated word count and analyzed status
       await fetchContracts();
       
       console.log(`Saved ${wordCount} words to the database for contract ID ${selectedContract.id}`);
       setSavedToDatabase(true);
     } catch (error) {
       console.error('Error analyzing contract:', error);
-      setExtractionError(`Failed to extract text from PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      if (!extractedText) {
+        setExtractionError(`Failed to extract text from PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      } else {
+        setAiAnalysisError(`Failed to analyze with AI: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     } finally {
       setIsExtracting(false);
+      setIsAnalyzingWithAI(false);
     }
+  };
+
+  // Function to parse the AI analysis response into major and minor risks
+  const parseRiskAnalysis = (analysisText: string) => {
+    // Extract major risks section using multi-line compatible regex
+    const majorRisksMatch = analysisText.match(/MAJOR RISKS:([^]*?)(?=MINOR RISKS:|$)/);
+    const majorRisks = majorRisksMatch ? majorRisksMatch[1].trim() : 'None identified.';
+    
+    // Extract minor risks section using multi-line compatible regex
+    const minorRisksMatch = analysisText.match(/MINOR RISKS:([^]*?)$/);
+    const minorRisks = minorRisksMatch ? minorRisksMatch[1].trim() : 'None identified.';
+    
+    return { majorRisks, minorRisks };
   };
 
   return (
@@ -224,11 +321,6 @@ export default function Home() {
       <header className="bg-blue-600 text-white p-4 shadow-md">
         <div className="container mx-auto flex justify-between items-center">
           <h1 className="text-2xl font-bold">DealChat</h1>
-          <nav>
-            <Link href="/contracts" className="text-white hover:text-blue-200 transition">
-              View Contracts
-            </Link>
-          </nav>
         </div>
       </header>
 
@@ -280,7 +372,7 @@ export default function Home() {
 
             {/* Contracts List */}
             <div className="flex-1 flex flex-col">
-              <h2 className="text-xl font-semibold mb-4">Your Contracts</h2>
+              <h2 className="text-xl font-semibold mb-4">Available Contracts</h2>
               
               {isLoadingContracts ? (
                 <div className="flex-1 flex items-center justify-center">
@@ -302,7 +394,23 @@ export default function Home() {
                     {contracts.map((contract, index) => (
                       <div 
                         key={index} 
-                        className={`p-3 hover:bg-gray-50 transition ${contract === selectedContract ? 'bg-blue-50' : ''}`}
+                        className={`p-3 hover:bg-gray-50 transition ${contract === selectedContract ? 'bg-blue-50' : ''} cursor-pointer`}
+                        onClick={() => {
+                          setSelectedContract(contract);
+                          setIsAnalyzing(false);
+                          setExtractedText(null);
+                          setExtractedWordCount(null);
+                          setExtractionError(null);
+                          setSavedToDatabase(false);
+                          
+                          // Scroll to the analysis section
+                          setTimeout(() => {
+                            const analysisSection = document.getElementById('analysis-section');
+                            if (analysisSection) {
+                              analysisSection.scrollIntoView({ behavior: 'smooth' });
+                            }
+                          }, 100);
+                        }}
                       >
                         <div className="flex justify-between items-start">
                           <div>
@@ -311,7 +419,7 @@ export default function Home() {
                             <div className="flex gap-2 mt-1 text-xs text-gray-500">
                               <span>{formatFileSize(contract.size)}</span>
                               <span>•</span>
-                              <span>{contract.word_count.toLocaleString()} words</span>
+                              <span>{contract.word_count?.toLocaleString() || 0} words</span>
                             </div>
                           </div>
                           <div className="flex space-x-2">
@@ -320,24 +428,38 @@ export default function Home() {
                               target="_blank" 
                               rel="noopener noreferrer"
                               className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 py-1 px-2 rounded transition-colors"
+                              onClick={(e) => e.stopPropagation()}
                             >
                               View
                             </a>
+                            {contract.analyzed ? (
+                              <button 
+                                className="text-xs bg-green-100 text-green-800 py-1 px-2 rounded cursor-default"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Analyzed
+                              </button>
+                            ) : (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent triggering the parent onClick
+                                  setSelectedContract(contract);
+                                  setIsAnalyzing(false);
+                                  setExtractedText(null);
+                                  setExtractedWordCount(null);
+                                  setExtractionError(null);
+                                  setSavedToDatabase(false);
+                                }}
+                                className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 py-1 px-2 rounded transition-colors"
+                              >
+                                Analyze
+                              </button>
+                            )}
                             <button 
-                              onClick={() => {
-                                setSelectedContract(contract);
-                                setIsAnalyzing(false);
-                                setExtractedText(null);
-                                setExtractedWordCount(null);
-                                setExtractionError(null);
-                                setSavedToDatabase(false);
+                              onClick={(e) => {
+                                e.stopPropagation(); // Prevent triggering the parent onClick
+                                handleDeleteContract(contract.id, e);
                               }}
-                              className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 py-1 px-2 rounded transition-colors"
-                            >
-                              Analyze
-                            </button>
-                            <button 
-                              onClick={(e) => handleDeleteContract(contract.id, e)}
                               className="text-xs bg-red-100 hover:bg-red-200 text-red-800 py-1 px-2 rounded transition-colors"
                               disabled={isDeleting}
                             >
@@ -355,7 +477,7 @@ export default function Home() {
         </div>
 
         {/* Analysis Section */}
-        <div className="md:w-2/3 bg-white rounded-lg shadow-lg p-4 min-h-[600px] flex flex-col">
+        <div id="analysis-section" className="md:w-2/3 bg-white rounded-lg shadow-lg p-4 min-h-[600px] flex flex-col">
           <h2 className="text-xl font-semibold text-center mb-4">Analysis</h2>
           
           {selectedContract ? (
@@ -371,7 +493,7 @@ export default function Home() {
                     onClick={analyzeContract}
                     className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition"
                   >
-                    Analyze this contract
+                    Analyze contract with AI
                   </button>
                 ) : isExtracting ? (
                   <div className="flex justify-center items-center py-4">
@@ -386,23 +508,76 @@ export default function Home() {
                 ) : (
                   <div className="text-left w-full flex flex-col">
                     <div className="mb-4 flex justify-between items-center">
-                      <h4 className="font-medium text-lg">Extracted Text</h4>
                       {extractedWordCount !== null && (
                         <span className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
                           {extractedWordCount.toLocaleString()} words
                         </span>
                       )}
                     </div>
-                    {savedToDatabase && (
-                      <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700">
-                        <p className="flex items-center">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.707a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                          </svg>
-                          Text successfully saved to database
-                        </p>
+                    
+                    {isAnalyzingWithAI ? (
+                      <div className="mb-6 p-4 border border-blue-200 rounded-lg bg-blue-50">
+                        <div className="flex items-center">
+                          <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500 mr-3"></div>
+                          <p className="text-blue-700">Analyzing contract with AI...</p>
+                        </div>
                       </div>
-                    )}
+                    ) : aiAnalysisError ? (
+                      <div className="mb-6 p-4 border border-red-200 rounded-lg bg-red-50">
+                        <p className="font-medium text-red-700 mb-1">AI Analysis Error:</p>
+                        <p className="text-red-700">{aiAnalysisError}</p>
+                      </div>
+                    ) : aiAnalysis ? (
+                      <div className="mb-6">
+                        <h4 className="font-medium text-lg mb-3">AI Risk Analysis</h4>
+                        
+                        {(() => {
+                          const { majorRisks, minorRisks } = parseRiskAnalysis(aiAnalysis);
+                          
+                          // Function to format risks by removing bullet points and improving readability
+                          const formatRiskText = (text: string) => {
+                            // Split into lines, trim whitespace, and filter out empty lines
+                            const lines = text.split('\n')
+                              .map(line => line.trim())
+                              .filter(line => line.length > 0);
+                            
+                            // Process each line to improve formatting
+                            return lines.map(line => {
+                              // Remove leading dashes/bullets and format risk titles in bold
+                              if (line.match(/^-\s*\[(.*?)\]:/)) {
+                                return line.replace(/^-\s*\[(.*?)\]:/, '<strong>$1:</strong>');
+                              } else if (line.startsWith('- ')) {
+                                return line.replace(/^-\s+/, '• ');
+                              }
+                              return line;
+                            }).join('<br /><br />');
+                          };
+                          
+                          return (
+                            <>
+                              <div className="mb-4">
+                                <div className="bg-red-100 border border-red-400 text-red-800 p-4 rounded-lg mb-4">
+                                  <h5 className="font-bold mb-2">Major Risks</h5>
+                                  <div 
+                                    className="risk-content" 
+                                    dangerouslySetInnerHTML={{ __html: formatRiskText(majorRisks) }}
+                                  />
+                                </div>
+                                
+                                <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 p-4 rounded-lg">
+                                  <h5 className="font-bold mb-2">Minor Risks</h5>
+                                  <div 
+                                    className="risk-content" 
+                                    dangerouslySetInnerHTML={{ __html: formatRiskText(minorRisks) }}
+                                  />
+                                </div>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ) : null}
+                    
                     <div className="border p-4 rounded-lg bg-gray-50 overflow-auto max-h-[500px] text-sm">
                       {extractedText ? (
                         <p className="whitespace-pre-wrap font-mono">{extractedText}</p>

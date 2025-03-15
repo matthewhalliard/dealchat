@@ -14,7 +14,8 @@ export async function initializeDatabase() {
         blob_url TEXT NOT NULL,
         extracted_text TEXT,
         word_count INTEGER,
-        upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        analyzed BOOLEAN DEFAULT FALSE
       )
     `;
 

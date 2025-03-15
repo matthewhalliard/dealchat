@@ -11,7 +11,8 @@ export async function GET() {
         blob_url as url, 
         word_count, 
         upload_date as "uploadedAt",
-        LENGTH(extracted_text) > 0 as has_text
+        LENGTH(extracted_text) > 0 as has_text,
+        analyzed
       FROM contracts 
       ORDER BY upload_date DESC
     `;
