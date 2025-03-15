@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { extractTextFromPDF } from '@/utils/pdf-extractor-client';
 
 interface Contract {
   id: number;
@@ -23,6 +24,12 @@ export default function Home() {
   const [contractsError, setContractsError] = useState<string | null>(null);
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [extractedText, setExtractedText] = useState<string | null>(null);
+  const [extractedWordCount, setExtractedWordCount] = useState<number | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractionError, setExtractionError] = useState<string | null>(null);
+  const [savedToDatabase, setSavedToDatabase] = useState(false);
 
   // Fetch contracts when the component mounts
   useEffect(() => {
@@ -118,6 +125,97 @@ export default function Home() {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  // Add a new function to delete contracts
+  const handleDeleteContract = async (contractId: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent event bubbling
+    
+    // Show confirmation before deleting
+    if (!confirm("Are you sure you want to delete this contract? This action cannot be undone.")) {
+      return;
+    }
+    
+    setIsDeleting(true);
+    
+    try {
+      const response = await fetch(`/api/delete-contract?id=${contractId}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Delete failed with status: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // If the deleted contract was the selected one, clear the selection
+        if (selectedContract?.id === contractId) {
+          setSelectedContract(null);
+          setIsAnalyzing(false);
+        }
+        
+        // Remove the contract from the local state
+        setContracts(contracts.filter(contract => contract.id !== contractId));
+      } else {
+        throw new Error(result.error || 'Delete failed');
+      }
+    } catch (error) {
+      console.error('Error deleting contract:', error);
+      alert(`Error deleting contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Add a new function to analyze the contract
+  const analyzeContract = async () => {
+    if (!selectedContract) return;
+    
+    setIsAnalyzing(true);
+    setIsExtracting(true);
+    setExtractedText(null);
+    setExtractedWordCount(null);
+    setExtractionError(null);
+    setSavedToDatabase(false);
+    
+    try {
+      // Extract text from the contract PDF
+      const { text, wordCount } = await extractTextFromPDF(selectedContract.url);
+      
+      // Update state with extracted text and word count
+      setExtractedText(text);
+      setExtractedWordCount(wordCount);
+      
+      // Save the extracted text to the database
+      const updateResponse = await fetch('/api/update-contract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contractId: selectedContract.id,
+          text,
+          wordCount
+        }),
+      });
+      
+      if (!updateResponse.ok) {
+        throw new Error(`Failed to save extracted text to database: ${updateResponse.status}`);
+      }
+      
+      // Refresh the contracts list to show updated word count
+      await fetchContracts();
+      
+      console.log(`Saved ${wordCount} words to the database for contract ID ${selectedContract.id}`);
+      setSavedToDatabase(true);
+    } catch (error) {
+      console.error('Error analyzing contract:', error);
+      setExtractionError(`Failed to extract text from PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   return (
@@ -229,10 +327,21 @@ export default function Home() {
                               onClick={() => {
                                 setSelectedContract(contract);
                                 setIsAnalyzing(false);
+                                setExtractedText(null);
+                                setExtractedWordCount(null);
+                                setExtractionError(null);
+                                setSavedToDatabase(false);
                               }}
                               className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 py-1 px-2 rounded transition-colors"
                             >
                               Analyze
+                            </button>
+                            <button 
+                              onClick={(e) => handleDeleteContract(contract.id, e)}
+                              className="text-xs bg-red-100 hover:bg-red-200 text-red-800 py-1 px-2 rounded transition-colors"
+                              disabled={isDeleting}
+                            >
+                              Delete
                             </button>
                           </div>
                         </div>
@@ -250,8 +359,8 @@ export default function Home() {
           <h2 className="text-xl font-semibold text-center mb-4">Analysis</h2>
           
           {selectedContract ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center max-w-md">
+            <div className="flex-1 flex flex-col">
+              <div className="text-center mb-4">
                 <h3 className="text-lg font-medium mb-2">{selectedContract.filename}</h3>
                 <p className="text-gray-500 mb-4">
                   {selectedContract.word_count.toLocaleString()} words • {formatFileSize(selectedContract.size)} • Uploaded on {formatDate(selectedContract.uploadedAt)}
@@ -259,16 +368,48 @@ export default function Home() {
                 
                 {!isAnalyzing ? (
                   <button
-                    onClick={() => setIsAnalyzing(true)}
+                    onClick={analyzeContract}
                     className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition"
                   >
                     Analyze this contract
                   </button>
+                ) : isExtracting ? (
+                  <div className="flex justify-center items-center py-4">
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                    <span className="ml-2 text-gray-600">Extracting text...</span>
+                  </div>
+                ) : extractionError ? (
+                  <div className="text-left border p-4 rounded-lg bg-red-50 mb-4 text-red-700">
+                    <p className="font-medium mb-2">Error extracting text:</p>
+                    <p>{extractionError}</p>
+                  </div>
                 ) : (
-                  <div className="text-left border p-4 rounded-lg bg-gray-50">
-                    <p className="text-gray-600">
-                      Analysis functionality will be implemented in the next step.
-                    </p>
+                  <div className="text-left w-full flex flex-col">
+                    <div className="mb-4 flex justify-between items-center">
+                      <h4 className="font-medium text-lg">Extracted Text</h4>
+                      {extractedWordCount !== null && (
+                        <span className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
+                          {extractedWordCount.toLocaleString()} words
+                        </span>
+                      )}
+                    </div>
+                    {savedToDatabase && (
+                      <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700">
+                        <p className="flex items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.707a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          Text successfully saved to database
+                        </p>
+                      </div>
+                    )}
+                    <div className="border p-4 rounded-lg bg-gray-50 overflow-auto max-h-[500px] text-sm">
+                      {extractedText ? (
+                        <p className="whitespace-pre-wrap font-mono">{extractedText}</p>
+                      ) : (
+                        <p className="text-gray-500">No text extracted</p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

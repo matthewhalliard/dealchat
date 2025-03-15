@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 interface Contract {
+  id: number;
   url: string;
   pathname: string;
   size: number;
@@ -15,6 +16,7 @@ export default function ContractsPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const fetchContracts = async () => {
@@ -64,6 +66,40 @@ export default function ContractsPage() {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  // Add a new function to delete contracts
+  const handleDeleteContract = async (contractId: number) => {
+    // Show confirmation before deleting
+    if (!confirm("Are you sure you want to delete this contract? This action cannot be undone.")) {
+      return;
+    }
+    
+    setIsDeleting(true);
+    
+    try {
+      const response = await fetch(`/api/delete-contract?id=${contractId}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Delete failed with status: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // Remove the contract from the local state
+        setContracts(contracts.filter(contract => contract.id !== contractId));
+      } else {
+        throw new Error(result.error || 'Delete failed');
+      }
+    } catch (error) {
+      console.error('Error deleting contract:', error);
+      alert(`Error deleting contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -153,10 +189,17 @@ export default function ContractsPage() {
                       <a 
                         href={contract.url} 
                         download={contract.filename}
-                        className="text-green-600 hover:text-green-900"
+                        className="text-green-600 hover:text-green-900 mr-4"
                       >
                         Download
                       </a>
+                      <button 
+                        onClick={() => handleDeleteContract(contract.id)}
+                        className="text-red-600 hover:text-red-900 cursor-pointer"
+                        disabled={isDeleting}
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 ))}
