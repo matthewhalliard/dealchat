@@ -95,7 +95,7 @@ export default function ExtractTextPage() {
         <div className="bg-white p-6 rounded-lg shadow-md">
           <h2 className="text-xl font-semibold mb-4">Process All Contracts</h2>
           <p className="mb-4">
-            This will extract text from all PDFs in the database that haven't been processed yet or have only placeholder text.
+            This will extract text from all PDFs in the database that haven&apos;t been processed yet or have only placeholder text.
           </p>
           <button 
             onClick={processAllContracts}
