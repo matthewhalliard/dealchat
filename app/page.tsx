@@ -297,17 +297,49 @@ export default function Home() {
     }
   };
 
-  // Function to parse the AI analysis response into major and minor risks
+  // Function to parse the AI analysis response into parties and their risks
   const parseRiskAnalysis = (analysisText: string) => {
-    // Extract major risks section using multi-line compatible regex
-    const majorRisksMatch = analysisText.match(/MAJOR RISKS:([^]*?)(?=MINOR RISKS:|$)/);
-    const majorRisks = majorRisksMatch ? majorRisksMatch[1].trim() : 'None identified.';
+    // Extract the parties section
+    const partiesMatch = analysisText.match(/PARTIES:([^]*?)(?=RISKS FOR|$)/);
+    const partiesSection = partiesMatch ? partiesMatch[1].trim() : '';
     
-    // Extract minor risks section using multi-line compatible regex
-    const minorRisksMatch = analysisText.match(/MINOR RISKS:([^]*?)$/);
-    const minorRisks = minorRisksMatch ? minorRisksMatch[1].trim() : 'None identified.';
+    console.log("Parties section:", partiesSection); // Debug log
     
-    return { majorRisks, minorRisks };
+    // Parse parties and their risk scores
+    const parties = [];
+    const partyLines = partiesSection.split('\n').filter(line => line.trim().length > 0);
+    
+    console.log("Party lines:", partyLines); // Debug log
+    
+    for (const line of partyLines) {
+      // Updated regex to match the actual format returned by the API
+      const partyMatch = line.match(/^-\s*([^:]+):\s*Risk Score\s*(\d+)\/100/);
+      if (partyMatch) {
+        parties.push({
+          name: partyMatch[1].trim(),
+          riskScore: parseInt(partyMatch[2], 10)
+        });
+      }
+    }
+    
+    console.log("Parsed parties:", parties); // Debug log
+    
+    // Extract risks for each party
+    const partyRisks: Record<string, string> = {};
+    
+    for (const party of parties) {
+      // Updated regex to handle party names that may contain special characters
+      const risksRegex = new RegExp(`RISKS FOR ${party.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:([^]*?)(?=RISKS FOR|$)`, 'i');
+      const risksMatch = analysisText.match(risksRegex);
+      
+      if (risksMatch) {
+        partyRisks[party.name] = risksMatch[1].trim();
+      } else {
+        partyRisks[party.name] = 'No risks identified.';
+      }
+    }
+    
+    return { parties, partyRisks };
   };
 
   return (
@@ -522,10 +554,10 @@ export default function Home() {
                       </div>
                     ) : aiAnalysis ? (
                       <div className="mb-6">
-                        <h4 className="font-medium text-lg mb-3">AI Risk Analysis</h4>
+                        <h4 className="font-medium text-lg mb-3">Contract Party Risk Analysis</h4>
                         
                         {(() => {
-                          const { majorRisks, minorRisks } = parseRiskAnalysis(aiAnalysis);
+                          const { parties, partyRisks } = parseRiskAnalysis(aiAnalysis);
                           
                           // Function to format risks by removing bullet points and improving readability
                           const formatRiskText = (text: string) => {
@@ -546,26 +578,43 @@ export default function Home() {
                             }).join('<br /><br />');
                           };
                           
+                          // Function to get color class based on risk score
+                          const getRiskScoreColorClass = (score: number) => {
+                            if (score <= 20) return 'bg-green-100 border-green-400 text-green-800';
+                            if (score <= 40) return 'bg-blue-100 border-blue-400 text-blue-800';
+                            if (score <= 60) return 'bg-yellow-100 border-yellow-400 text-yellow-800';
+                            if (score <= 80) return 'bg-orange-100 border-orange-400 text-orange-800';
+                            return 'bg-red-100 border-red-400 text-red-800';
+                          };
+                          
                           return (
-                            <>
-                              <div className="mb-4">
-                                <div className="bg-red-100 border border-red-400 text-red-800 p-4 rounded-lg mb-4">
-                                  <h5 className="font-bold mb-2">Major Risks</h5>
-                                  <div 
-                                    className="risk-content" 
-                                    dangerouslySetInnerHTML={{ __html: formatRiskText(majorRisks) }}
-                                  />
+                            <div className="space-y-6">
+                              {parties.length > 0 ? (
+                                parties.map((party, index) => (
+                                  <div key={index} className={`border rounded-lg p-4 ${getRiskScoreColorClass(party.riskScore)}`}>
+                                    <div className="flex justify-between items-center mb-2">
+                                      <h5 className="font-bold text-lg">{party.name}</h5>
+                                      <div className="flex items-center">
+                                        <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 border-current">
+                                          {party.riskScore}
+                                        </div>
+                                        <span className="ml-2 font-medium">/ 100</span>
+                                      </div>
+                                    </div>
+                                    
+                                    <h6 className="font-semibold mb-2">Identified Risks:</h6>
+                                    <div 
+                                      className="risk-content" 
+                                      dangerouslySetInnerHTML={{ __html: formatRiskText(partyRisks[party.name]) }}
+                                    />
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="p-4 border border-gray-300 rounded-lg bg-gray-50">
+                                  <p>No parties identified in this contract.</p>
                                 </div>
-                                
-                                <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 p-4 rounded-lg">
-                                  <h5 className="font-bold mb-2">Minor Risks</h5>
-                                  <div 
-                                    className="risk-content" 
-                                    dangerouslySetInnerHTML={{ __html: formatRiskText(minorRisks) }}
-                                  />
-                                </div>
-                              </div>
-                            </>
+                              )}
+                            </div>
                           );
                         })()}
                       </div>

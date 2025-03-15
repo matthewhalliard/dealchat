@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
 
 async function analyzeContractWithOpenAI(contractText: string): Promise<string> {
   try {
-    // Call OpenAI API with the updated prompt for categorized risks
+    // Call OpenAI API with updated prompt for party-based risk analysis
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -74,27 +74,40 @@ async function analyzeContractWithOpenAI(contractText: string): Promise<string> 
           role: "system",
           content: `You are an expert legal analyst specializing in contract risk assessment.
           
-          Analyze the provided contract and categorize all identified risks into two distinct groups:
+          Analyze the provided contract and:
           
-          1. MAJOR RISKS: Critical issues that could have significant legal, financial, or operational implications. These are high-priority concerns that require immediate attention or renegotiation.
-          
-          2. MINOR RISKS: Less critical issues that present potential problems, ambiguities, or inefficiencies that should be addressed but are not deal-breakers.
+          1. Identify all parties to the contract (e.g., companies, entities, individuals)
+          2. For each party, determine the specific risks they are taking on
+          3. Assign each party an overall risk score from 1-100, where:
+             - 1-20: Very low risk
+             - 21-40: Low risk
+             - 41-60: Moderate risk
+             - 61-80: High risk
+             - 81-100: Very high risk
           
           Format your response EXACTLY as follows:
           
-          MAJOR RISKS:
-          - [Risk Title 1]: Brief explanation
-          - [Risk Title 2]: Brief explanation
+          PARTIES:
+          - Party Name 1: Risk Score 50/100
+          - Party Name 2: Risk Score 75/100
           
-          MINOR RISKS:
-          - [Risk Title 1]: Brief explanation
-          - [Risk Title 2]: Brief explanation
+          RISKS FOR Party Name 1:
+          - Risk Title 1: Brief explanation
+          - Risk Title 2: Brief explanation
           
-          Do not include general summaries or introductions - focus exclusively on identifying and categorizing specific risks with clear headings. If there are no risks in a category, still include the heading but note "None identified."`
+          RISKS FOR Party Name 2:
+          - Risk Title 1: Brief explanation
+          - Risk Title 2: Brief explanation
+          
+          Do not include general summaries or introductions. Focus exclusively on identifying parties and their specific risks with clear headings. 
+          
+          If you cannot identify any parties, still include "PARTIES:" followed by "- Unknown Party: Risk Score 50/100" and then provide an analysis section for that unknown party.
+          
+          Be concise but comprehensive. Analyze obligations, liabilities, penalties, and potential legal exposures.`
         },
         {
           role: "user",
-          content: `Analyze this contract and categorize all risks as either major or minor:\n\n${contractText}`
+          content: `Analyze this contract to identify all parties, list specific risks for each party, and provide an overall risk score (1-100) for each party:\n\n${contractText}`
         }
       ],
       temperature: 0.2, // Lower temperature for more focused, analytical response
